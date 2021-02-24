@@ -1,0 +1,109 @@
+From 96a08b0391dfc76c4471e9acc02ead8172729b12 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Wed, 24 Feb 2021 06:16:17 -0800
+Subject: [PATCH] Revert 0130 and (part of) 0459
+
+---
+ .../java/net/minecraft/server/Entity.java     | 25 ++++++++-----------
+ .../net/minecraft/server/EntityPlayer.java    |  3 ++-
+ .../minecraft/server/PlayerConnection.java    |  3 ++-
+ 3 files changed, 14 insertions(+), 17 deletions(-)
+
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index d8787985a..c33ce1a35 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -1913,12 +1913,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         } else {
+             // CraftBukkit start - Capture drops for death event
+             if (this instanceof EntityLiving && !((EntityLiving) this).forceDrops) {
+-                ((EntityLiving) this).drops.add(org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemstack)); // Paper - mirror so we can destroy it later
++                // ((EntityLiving) this).drops.add(org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemstack)); // Paper - mirror so we can destroy it later
++                ((EntityLiving) this).drops.add(org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy(itemstack)); // Reverted
+                 return null;
+             }
+             // CraftBukkit end
+-            EntityItem entityitem = new EntityItem(this.world, this.locX(), this.locY() + (double) f, this.locZ(), itemstack.cloneItemStack()); // Paper - clone so we can destroy original
+-            itemstack.setCount(0); // Paper - destroy this item - if this ever leaks due to game bugs, ensure it doesn't dupe
++            // EntityItem entityitem = new EntityItem(this.world, this.locX(), this.locY() + (double) f, this.locZ(), itemstack.cloneItemStack()); // Paper - clone so we can destroy original
++            // itemstack.setCount(0); // Paper - destroy this item - if this ever leaks due to game bugs, ensure it doesn't dupe
++            EntityItem entityitem = new EntityItem(this.world, this.locX(), this.locY() + (double) f, this.locZ(), itemstack); // Revert 0459
+ 
+             entityitem.defaultPickupDelay();
+             // CraftBukkit start
+@@ -2566,12 +2568,6 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     @Nullable
+     public Entity teleportTo(WorldServer worldserver, BlockPosition location) {
+         // CraftBukkit end
+-        // Paper start - fix bad state entities causing dupes
+-        if (!isAlive() || !valid) {
+-            LOGGER.warn("Illegal Entity Teleport " + this + " to " + worldserver + ":" + location, new Throwable());
+-            return null;
+-        }
+-        // Paper end
+         if (this.world instanceof WorldServer && !this.dead) {
+             this.world.getMethodProfiler().enter("changeDimension");
+             // CraftBukkit start
+@@ -2592,11 +2588,6 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+                 // CraftBukkit end
+ 
+                 this.world.getMethodProfiler().exitEnter("reloading");
+-                // Paper start - Change lead drop timing to prevent dupe
+-                if (this instanceof EntityInsentient) {
+-                    ((EntityInsentient) this).unleash(true, true); // Paper drop lead
+-                }
+-                // Paper end
+                 Entity entity = this.getEntityType().a((World) worldserver);
+ 
+                 if (entity != null) {
+@@ -2610,6 +2601,10 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+                     // CraftBukkit start - Forward the CraftEntity to the new entity
+                     this.getBukkitEntity().setHandle(entity);
+                     entity.bukkitEntity = this.getBukkitEntity();
++
++                    if (this instanceof EntityInsentient) {
++                        ((EntityInsentient) this).unleash(true, false); // Unleash to prevent duping of leads.
++                    }
+                     // CraftBukkit end
+                 }
+ 
+@@ -2734,7 +2729,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     }
+ 
+     public boolean canPortal() {
+-        return isAlive() && valid; // Paper
++        return true;
+     }
+ 
+     public float a(Explosion explosion, IBlockAccess iblockaccess, BlockPosition blockposition, IBlockData iblockdata, Fluid fluid, float f) {
+diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
+index d51925612..bd6d10bdd 100644
+--- a/src/main/java/net/minecraft/server/EntityPlayer.java
++++ b/src/main/java/net/minecraft/server/EntityPlayer.java
+@@ -2122,7 +2122,8 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+ 
+     @Override
+     public boolean isFrozen() { // Paper - protected > public
+-        return super.isFrozen() || (this.playerConnection != null && this.playerConnection.isDisconnected()); // Paper
++        //return super.isFrozen() || (this.playerConnection != null && this.playerConnection.isDisconnected()); // Paper
++        return super.isFrozen() || !getBukkitEntity().isOnline(); // Revert 0130
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
+index ad33505bb..8180f9f45 100644
+--- a/src/main/java/net/minecraft/server/PlayerConnection.java
++++ b/src/main/java/net/minecraft/server/PlayerConnection.java
+@@ -2929,7 +2929,8 @@ public class PlayerConnection implements PacketListenerPlayIn {
+     // Paper end
+ 
+     public final boolean isDisconnected() {
+-        return (!this.player.joining && !this.networkManager.isConnected()) || this.processedDisconnect; // Paper
++        //return (!this.player.joining && !this.networkManager.isConnected()) || this.processedDisconnect; // Paper
++        return !this.player.joining && !this.networkManager.isConnected(); // Revert 0130
+     }
+     // CraftBukkit end
+ 
+-- 
+2.20.1
+
